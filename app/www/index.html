@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Survivor Arena</title>
+<style>
+  html, body { margin: 0; background: #0b0d12; overflow: hidden; height: 100%; }
+  #game { display: block; background: #12151c; margin: 0 auto; touch-action: none; }
+  #hud {
+    position: fixed; top: 0; left: 0; width: 100%; padding: 10px 16px;
+    box-sizing: border-box; color: #eee; font: 14px system-ui, sans-serif;
+    display: flex; justify-content: space-between; pointer-events: none;
+    text-shadow: 0 1px 2px #000;
+  }
+  #hud .bar { width: 200px; height: 10px; background: #333; border-radius: 5px; overflow: hidden; margin-top: 4px; }
+  #hud .bar > div { height: 100%; background: #4caf50; width: 0%; }
+  #overlay {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.7); color: #eee; font: 16px system-ui, sans-serif; text-align: center;
+  }
+  #overlay.hidden { display: none; }
+  #overlay button {
+    margin-top: 16px; padding: 10px 24px; font-size: 16px; cursor: pointer;
+    background: #4caf50; color: #fff; border: none; border-radius: 6px;
+  }
+  #upgrades { display: flex; gap: 12px; margin-top: 12px; justify-content: center; flex-wrap: wrap; }
+  #upgrades button {
+    width: 160px; padding: 14px 10px; background: #1e2430; color: #eee;
+    border: 1px solid #3a4150; border-radius: 8px; cursor: pointer; font-size: 13px; text-align: left;
+  }
+  #upgrades button:hover { background: #2a3140; border-color: #4caf50; }
+  #upgrades button b { display: block; font-size: 14px; margin-bottom: 4px; color: #8fdc8f; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div>
+    HP: <span id="hpText">100/100</span>
+    <div class="bar"><div id="hpBar"></div></div>
+  </div>
+  <div style="text-align:right">
+    Lv. <span id="lvl">1</span><br>
+    <span id="timer">00:00</span>
+  </div>
+</div>
+<div id="overlay" class="hidden">
+  <div>
+    <div id="overlayTitle" style="font-size:28px; margin-bottom:8px;"></div>
+    <div id="overlayBody"></div>
+    <div id="upgrades"></div>
+    <button id="overlayBtn">เริ่มเกม</button>
+  </div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>

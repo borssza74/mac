@@ -16,6 +16,48 @@ const keys = new Set();
 window.addEventListener('keydown', (e) => keys.add(e.key.toLowerCase()));
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
+// touch joystick — bottom-left thumb area, direction only (no deadzone drawing needed)
+const touch = { active: false, dx: 0, dy: 0, startX: 0, startY: 0, id: null };
+const JOY_RADIUS = 60;
+
+function touchToVector(t) {
+  const dx = t.clientX - touch.startX;
+  const dy = t.clientY - touch.startY;
+  const len = Math.hypot(dx, dy) || 1;
+  const clamped = Math.min(len, JOY_RADIUS);
+  touch.dx = (dx / len) * (clamped / JOY_RADIUS);
+  touch.dy = (dy / len) * (clamped / JOY_RADIUS);
+}
+
+window.addEventListener('touchstart', (e) => {
+  const t = e.changedTouches[0];
+  touch.active = true;
+  touch.id = t.identifier;
+  touch.startX = t.clientX;
+  touch.startY = t.clientY;
+  touch.dx = 0;
+  touch.dy = 0;
+}, { passive: true });
+
+window.addEventListener('touchmove', (e) => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === touch.id) touchToVector(t);
+  }
+}, { passive: true });
+
+function endTouch(e) {
+  for (const t of e.changedTouches) {
+    if (t.identifier === touch.id) {
+      touch.active = false;
+      touch.dx = 0;
+      touch.dy = 0;
+      touch.id = null;
+    }
+  }
+}
+window.addEventListener('touchend', endTouch, { passive: true });
+window.addEventListener('touchcancel', endTouch, { passive: true });
+
 // ---------- helpers ----------
 const rand = (a, b) => a + Math.random() * (b - a);
 const dist2 = (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2;
@@ -136,15 +178,17 @@ function update(dt) {
   if (!running || paused) return;
   elapsed += dt;
 
-  // movement
+  // movement — keyboard or touch joystick
   let dx = 0, dy = 0;
   if (keys.has('w') || keys.has('arrowup')) dy -= 1;
   if (keys.has('s') || keys.has('arrowdown')) dy += 1;
   if (keys.has('a') || keys.has('arrowleft')) dx -= 1;
   if (keys.has('d') || keys.has('arrowright')) dx += 1;
+  if (touch.active) { dx = touch.dx; dy = touch.dy; }
   const len = Math.hypot(dx, dy) || 1;
-  player.x += (dx / len) * player.speed * dt;
-  player.y += (dy / len) * player.speed * dt;
+  const moveScale = touch.active ? Math.min(1, len) : 1;
+  player.x += (dx / len) * player.speed * moveScale * dt;
+  player.y += (dy / len) * player.speed * moveScale * dt;
   player.x = Math.max(player.r, Math.min(canvas.width - player.r, player.x));
   player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y));
 
@@ -389,7 +433,7 @@ running = false;
 paused = true;
 showOverlay(
   'Survivor Arena',
-  'WASD หรือลูกศร เพื่อเดิน ยิงอัตโนมัติไปทางศัตรูที่ใกล้สุด รอดให้นานที่สุด!',
+  'คอม: WASD/ลูกศร | มือถือ: แตะค้างแล้วลากเพื่อเดิน — ยิงอัตโนมัติไปทางศัตรูที่ใกล้สุด รอดให้นานที่สุด!',
   [],
   'เริ่มเกม',
   () => { resetGame(); hideOverlay(); }
