@@ -62,6 +62,41 @@ window.addEventListener('touchcancel', endTouch, { passive: true });
 const rand = (a, b) => a + Math.random() * (b - a);
 const dist2 = (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2;
 
+// ---------- sound (procedural, no audio files) ----------
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function beep({ freq = 440, duration = 0.08, type = 'square', volume = 0.08, slideTo = null }) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, audioCtx.currentTime + duration);
+  gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+const sfx = {
+  shoot: () => beep({ freq: 620, duration: 0.05, type: 'square', volume: 0.04 }),
+  hit: () => beep({ freq: 180, duration: 0.07, type: 'sawtooth', volume: 0.05 }),
+  pickup: () => beep({ freq: 500, duration: 0.07, type: 'sine', volume: 0.05, slideTo: 900 }),
+  hurt: () => beep({ freq: 160, duration: 0.15, type: 'sawtooth', volume: 0.08, slideTo: 60 }),
+  levelup: () => {
+    beep({ freq: 523, duration: 0.1, type: 'triangle', volume: 0.07, slideTo: 659 });
+    setTimeout(() => beep({ freq: 659, duration: 0.14, type: 'triangle', volume: 0.07, slideTo: 880 }), 90);
+  },
+  gameover: () => {
+    beep({ freq: 300, duration: 0.2, type: 'sawtooth', volume: 0.08, slideTo: 80 });
+  },
+};
+
 // ---------- upgrade pool ----------
 const UPGRADES = [
   { name: 'ยิงไว', desc: 'ลดเวลาเติมกระสุน 15%', apply: (p) => (p.fireDelay *= 0.85) },
@@ -103,6 +138,7 @@ function makePlayer() {
 
 let player, bullets, enemies, particles, exps;
 let elapsed, spawnTimer, spawnInterval, running, paused;
+let hurtSoundCooldown = 0;
 
 function resetGame() {
   player = makePlayer();
@@ -203,6 +239,7 @@ function update(dt) {
   player.fireTimer -= dt;
   if (player.fireTimer <= 0 && enemies.length) {
     fireBullets();
+    sfx.shoot();
     player.fireTimer = player.fireDelay;
   }
 
@@ -238,7 +275,7 @@ function update(dt) {
         e.hp -= b.damage;
         b._dead = true;
         spawnParticles(b.x, b.y, '#ffd34d', 3);
-        if (e.hp <= 0) killEnemy(e);
+        if (e.hp <= 0) killEnemy(e); else sfx.hit();
         break;
       }
     }
@@ -247,9 +284,11 @@ function update(dt) {
   enemies = enemies.filter((e) => e.hp > 0);
 
   // enemy-player collisions
+  hurtSoundCooldown -= dt;
   for (const e of enemies) {
     if (dist2(player.x, player.y, e.x, e.y) < (e.r + player.r) ** 2) {
       player.hp -= e.damage * dt;
+      if (hurtSoundCooldown <= 0) { sfx.hurt(); hurtSoundCooldown = 0.35; }
       if (player.hp <= 0) gameOver();
     }
   }
@@ -265,7 +304,7 @@ function update(dt) {
     if (d < 16) o._collected = true;
   }
   for (const o of exps) {
-    if (o._collected) gainExp(o.value);
+    if (o._collected) { gainExp(o.value); sfx.pickup(); }
   }
   exps = exps.filter((o) => !o._collected);
 
@@ -283,6 +322,7 @@ function update(dt) {
 function killEnemy(e) {
   spawnParticles(e.x, e.y, e.color, 10);
   exps.push({ x: e.x, y: e.y, value: 3 + Math.floor(e.maxHp / 15) });
+  beep({ freq: 220, duration: 0.09, type: 'square', volume: 0.06, slideTo: 90 });
 }
 
 function gainExp(v) {
@@ -298,9 +338,12 @@ function gainExp(v) {
 function gameOver() {
   running = false;
   paused = true;
+  sfx.gameover();
+  const isBest = saveHighScore(elapsed, player.level);
   showOverlay(
     'จบเกม',
-    `รอดชีวิต ${formatTime(elapsed)} — เลเวล ${player.level}`,
+    `รอดชีวิต ${formatTime(elapsed)} — เลเวล ${player.level}` +
+      (isBest ? ' — สถิติใหม่! 🏆' : ` — สถิติที่ดีที่สุด: ${formatTime(getHighScore().time)}`),
     [],
     'เล่นใหม่',
     () => { resetGame(); hideOverlay(); }
@@ -309,6 +352,7 @@ function gameOver() {
 
 function openUpgradeChoice() {
   paused = true;
+  sfx.levelup();
   const choices = pickUpgrades(3);
   showOverlay(
     'เลเวลอัป!',
@@ -429,6 +473,30 @@ function draw() {
   ctx.restore();
 }
 
+// ---------- high score (localStorage) ----------
+const HIGH_SCORE_KEY = 'survivorArenaHighScore';
+
+function getHighScore() {
+  try {
+    const raw = localStorage.getItem(HIGH_SCORE_KEY);
+    if (!raw) return { time: 0, level: 0 };
+    return JSON.parse(raw);
+  } catch {
+    return { time: 0, level: 0 };
+  }
+}
+
+function saveHighScore(time, level) {
+  const best = getHighScore();
+  if (time <= best.time) return false;
+  try {
+    localStorage.setItem(HIGH_SCORE_KEY, JSON.stringify({ time, level }));
+  } catch {
+    // localStorage unavailable (e.g. blocked storage) — skip silently
+  }
+  return true;
+}
+
 // ---------- HUD / overlay ----------
 const hpText = document.getElementById('hpText');
 const hpBar = document.getElementById('hpBar');
@@ -496,11 +564,13 @@ function loop(now) {
 resetGame();
 running = false;
 paused = true;
+const best = getHighScore();
+const bestLine = best.time > 0 ? `\nสถิติที่ดีที่สุด: ${formatTime(best.time)} (เลเวล ${best.level})` : '';
 showOverlay(
   'Survivor Arena',
-  'คอม: WASD/ลูกศร | มือถือ: แตะค้างแล้วลากเพื่อเดิน — ยิงอัตโนมัติไปทางศัตรูที่ใกล้สุด รอดให้นานที่สุด!',
+  'คอม: WASD/ลูกศร | มือถือ: แตะค้างแล้วลากเพื่อเดิน — ยิงอัตโนมัติไปทางศัตรูที่ใกล้สุด รอดให้นานที่สุด!' + bestLine,
   [],
   'เริ่มเกม',
-  () => { resetGame(); hideOverlay(); }
+  () => { ensureAudio(); resetGame(); hideOverlay(); }
 );
 requestAnimationFrame(loop);
