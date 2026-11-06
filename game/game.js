@@ -86,6 +86,7 @@ function pickUpgrades(n) {
 function makePlayer() {
   return {
     x: 0, y: 0, r: 14,
+    facing: -Math.PI / 2,
     hp: 100, maxHp: 100,
     speed: 180,
     damage: 10,
@@ -135,6 +136,9 @@ function spawnEnemy() {
     speed: 55 + tier * 8,
     damage: 8 + tier * 2,
     color: ['#e05b5b', '#d98a3d', '#c04fd9', '#5bc0e0'][tier] || '#e05b5b',
+    sides: [3, 4, 5, 6][tier] || 3, // triangle, diamond, pentagon, hexagon
+    spin: rand(-1.5, 1.5),
+    angle: 0,
   });
 }
 
@@ -187,6 +191,7 @@ function update(dt) {
   if (touch.active) { dx = touch.dx; dy = touch.dy; }
   const len = Math.hypot(dx, dy) || 1;
   const moveScale = touch.active ? Math.min(1, len) : 1;
+  if (moveScale > 0.05) player.facing = Math.atan2(dy, dx);
   player.x += (dx / len) * player.speed * moveScale * dt;
   player.y += (dy / len) * player.speed * moveScale * dt;
   player.x = Math.max(player.r, Math.min(canvas.width - player.r, player.x));
@@ -222,6 +227,7 @@ function update(dt) {
     const a = Math.atan2(player.y - e.y, player.x - e.x);
     e.x += Math.cos(a) * e.speed * dt;
     e.y += Math.sin(a) * e.speed * dt;
+    e.angle += e.spin * dt;
   }
 
   // bullet-enemy collisions
@@ -314,11 +320,30 @@ function openUpgradeChoice() {
 }
 
 // ---------- rendering ----------
+function drawPolygon(x, y, radius, sides, angle) {
+  ctx.beginPath();
+  for (let i = 0; i < sides; i++) {
+    const a = angle + (i / sides) * Math.PI * 2;
+    const px = x + Math.cos(a) * radius;
+    const py = y + Math.sin(a) * radius;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // dark radial background for depth, instead of a flat fill
+  const bgGrad = ctx.createRadialGradient(
+    canvas.width / 2, canvas.height / 2, 0,
+    canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) * 0.7
+  );
+  bgGrad.addColorStop(0, '#171b24');
+  bgGrad.addColorStop(1, '#0a0c11');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // faint grid for motion reference
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)';
   ctx.lineWidth = 1;
   const grid = 60;
   for (let x = 0; x < canvas.width; x += grid) {
@@ -328,10 +353,14 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
   }
 
-  // exp orbs
+  // exp orbs — soft glow
   for (const o of exps) {
+    ctx.save();
+    ctx.shadowColor = '#7fd4ff';
+    ctx.shadowBlur = 10;
     ctx.fillStyle = '#7fd4ff';
     ctx.beginPath(); ctx.arc(o.x, o.y, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
 
   // particles
@@ -342,10 +371,21 @@ function draw() {
   }
   ctx.globalAlpha = 1;
 
-  // enemies
+  // enemies — rotating polygons with a glow outline matching their tier color
   for (const e of enemies) {
+    ctx.save();
+    ctx.shadowColor = e.color;
+    ctx.shadowBlur = 12;
     ctx.fillStyle = e.color;
-    ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill();
+    drawPolygon(e.x, e.y, e.r, e.sides, e.angle);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1.5;
+    drawPolygon(e.x, e.y, e.r, e.sides, e.angle);
+    ctx.stroke();
+
     // hp bar
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(e.x - e.r, e.y - e.r - 8, e.r * 2, 3);
@@ -353,15 +393,40 @@ function draw() {
     ctx.fillRect(e.x - e.r, e.y - e.r - 8, (e.r * 2) * (e.hp / e.maxHp), 3);
   }
 
-  // bullets
-  ctx.fillStyle = '#ffd34d';
+  // bullets — glowing streak along travel direction
   for (const b of bullets) {
-    ctx.beginPath(); ctx.arc(b.x, b.y, 3, 0, Math.PI * 2); ctx.fill();
+    const a = Math.atan2(b.vy, b.vx);
+    const tailX = b.x - Math.cos(a) * 10;
+    const tailY = b.y - Math.sin(a) * 10;
+    ctx.save();
+    ctx.shadowColor = '#ffd34d';
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = '#ffd34d';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(tailX, tailY); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.restore();
   }
 
-  // player
+  // player — triangular ship, nose pointing where it's facing, with glow
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(player.facing);
+  ctx.shadowColor = '#4caf50';
+  ctx.shadowBlur = 14;
   ctx.fillStyle = '#4caf50';
-  ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(player.r + 4, 0);
+  ctx.lineTo(-player.r * 0.7, player.r * 0.8);
+  ctx.lineTo(-player.r * 0.3, 0);
+  ctx.lineTo(-player.r * 0.7, -player.r * 0.8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
 }
 
 // ---------- HUD / overlay ----------
