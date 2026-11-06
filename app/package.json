@@ -1,0 +1,30 @@
+{
+  "name": "survivor-arena",
+  "version": "1.0.0",
+  "description": "Survivor Arena - top-down survival shooter, desktop + mobile app",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:linux": "electron-builder --linux AppImage",
+    "dist:win": "electron-builder --win portable",
+    "dist:mac": "electron-builder --mac dir",
+    "cap:sync": "cap sync android"
+  },
+  "build": {
+    "appId": "dev.survivorarena.app",
+    "productName": "Survivor Arena",
+    "files": ["electron/**/*", "www/**/*"],
+    "directories": { "output": "dist" },
+    "linux": { "target": "AppImage", "category": "Game" },
+    "publish": null
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/cli": "^7.0.0"
+  }
+}

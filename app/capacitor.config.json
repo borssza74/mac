@@ -1,0 +1,6 @@
+{
+  "appId": "dev.survivorarena.app",
+  "appName": "Survivor Arena",
+  "webDir": "www",
+  "server": { "androidScheme": "https" }
+}
